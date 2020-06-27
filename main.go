@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"io/ioutil"
 	"log"
 	"strings"
@@ -12,6 +13,9 @@ import (
 )
 
 var (
+	list = flag.String("list", "list.txt", "RFID list")
+	port = flag.String("port", "/dev/ttyUSB0", "reader device")
+
 	OpenPin  rpio.Pin = rpio.Pin(22)
 	ClosePin rpio.Pin = rpio.Pin(27)
 )
@@ -39,7 +43,7 @@ func getRFIDToken(port *serial.Port) chan string {
 
 func parseUserList() (map[string]string, error) {
 	users := map[string]string{}
-	bytes, err := ioutil.ReadFile("list.txt")
+	bytes, err := ioutil.ReadFile(*list)
 	if err != nil {
 		return users, err
 	}
@@ -55,6 +59,8 @@ func parseUserList() (map[string]string, error) {
 }
 
 func main() {
+	flag.Parse()
+
 	log.Println(" :: Starting sphincter rfid token...")
 	log.Println(" :::: Opening GPIO")
 	err := rpio.Open()
@@ -76,7 +82,7 @@ func main() {
 	mode := &serial.Mode{
 		BaudRate: 9600,
 	}
-	port, err := serial.Open("/dev/ttyUSB0", mode)
+	port, err := serial.Open(*port, mode)
 	if err != nil {
 		log.Fatal(err)
 	}
