@@ -18,6 +18,8 @@ var (
 
 	OpenPin  rpio.Pin = rpio.Pin(22)
 	ClosePin rpio.Pin = rpio.Pin(27)
+
+	latestTimestamp time.Time
 )
 
 func getRFIDToken(port *serial.Port) chan string {
@@ -89,6 +91,12 @@ func main() {
 	log.Println(" :: Initialized!")
 
 	for msg := range getRFIDToken(&port) {
+		if time.Since(latestTimestamp) < 5*time.Second {
+			log.Println("Triggered to fast; skipped unlock")
+			continue
+		}
+		latestTimestamp = time.Now()
+
 		username, ok := users[msg]
 		if ok {
 			log.Printf("Hello %s %s", msg, username)
