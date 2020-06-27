@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stianeikeland/go-rpio"
+	"github.com/stianeikeland/go-rpio/v4"
 	"go.bug.st/serial"
 )
 
