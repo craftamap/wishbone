@@ -60,6 +60,13 @@ func parseUserList() (map[string]string, error) {
 	return users, nil
 }
 
+// If token only contains 0 and/or F's, its not a valid token
+func isValid(token string) bool {
+	token = strings.ReplaceAll(token, "F", "")
+	token = strings.ReplaceAll(token, "0", "")
+	return len(token) > 0
+}
+
 func main() {
 	flag.Parse()
 
@@ -104,7 +111,9 @@ func main() {
 			time.Sleep(1 * time.Second)
 			OpenPin.Low()
 		} else {
-			log.Printf("Could not find key %s", msg)
+			if isValid(msg) {
+				log.Printf("Could not find key %s", msg)
+			}
 		}
 	}
 }
