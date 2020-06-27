@@ -50,8 +50,8 @@ func parseUserList() (map[string]string, error) {
 	lines := strings.Split(string(bytes), "\n")
 	for _, line := range lines {
 		fields := strings.Fields(line)
-		if len(fields) == 2 {
-			users[fields[0]] = fields[1]
+		if len(fields) > 1 {
+			users[fields[0]] = strings.Join(fields[1:], " ")
 		}
 	}
 
