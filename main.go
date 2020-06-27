@@ -11,24 +11,48 @@ import (
 	"go.bug.st/serial"
 )
 
-func getRFIDToken(port *serial.Port, c chan string) {
-	for {
-		rd := bufio.NewReader(*port)
-		res, err := rd.ReadBytes('\x03')
-		if err != nil {
-			// If there was an error while reading from the port,
-			// panic so daemon will restart
-			panic(err)
+var (
+	OpenPin  rpio.Pin = rpio.Pin(22)
+	ClosePin rpio.Pin = rpio.Pin(27)
+)
+
+func getRFIDToken(port *serial.Port) chan string {
+	c := make(chan string)
+
+	go func() {
+		for {
+			rd := bufio.NewReader(*port)
+			res, err := rd.ReadBytes('\x03')
+			if err != nil {
+				// If there was an error while reading from the port,
+				// panic so daemon will restart
+				panic(err)
+			}
+			s := strings.Replace(string(res), "\x03", "", -1)
+			s = strings.Replace(s, "\x02", "", -1)
+			c <- s
 		}
-		s := strings.Replace(string(res), "\x03", "", -1)
-		s = strings.Replace(s, "\x02", "", -1)
-		c <- s
-	}
+	}()
+
+	return c
 }
 
-var users map[string]string = map[string]string{}
-var OpenPin rpio.Pin = rpio.Pin(22)
-var ClosePin rpio.Pin = rpio.Pin(27)
+func parseUserList() (map[string]string, error) {
+	users := map[string]string{}
+	bytes, err := ioutil.ReadFile("list.txt")
+	if err != nil {
+		return users, err
+	}
+	lines := strings.Split(string(bytes), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) == 2 {
+			users[fields[0]] = fields[1]
+		}
+	}
+
+	return users, nil
+}
 
 func main() {
 	log.Println(" :: Starting sphincter rfid token...")
@@ -41,19 +65,13 @@ func main() {
 	ClosePin.Output()
 
 	log.Println(" :::: Reading list.txt")
-	bytes, err := ioutil.ReadFile("list.txt")
+	users, err := parseUserList()
 	if err != nil {
 		log.Fatal(err)
 	}
-	lines := strings.Split(string(bytes), "\n")
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) == 2 {
-			users[fields[0]] = fields[1]
-		}
-	}
 	log.Printf(" :::: Found %d users \n", len(users))
 	// log.Printf("%v\n", users)
+
 	log.Println(" :::: Connecting to Serial")
 	mode := &serial.Mode{
 		BaudRate: 9600,
@@ -63,9 +81,8 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println(" :: Initialized!")
-	c := make(chan string)
-	go getRFIDToken(&port, c)
-	for msg := range c {
+
+	for msg := range getRFIDToken(&port) {
 		username, ok := users[msg]
 		if ok {
 			log.Printf("Hello %s %s", msg, username)
