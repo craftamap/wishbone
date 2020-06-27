@@ -95,14 +95,16 @@ func main() {
 			log.Println("Triggered to fast; skipped unlock")
 			continue
 		}
-		latestTimestamp = time.Now()
 
 		username, ok := users[msg]
 		if ok {
+			latestTimestamp = time.Now()
 			log.Printf("Hello %s %s", msg, username)
 			OpenPin.High()
 			time.Sleep(1 * time.Second)
 			OpenPin.Low()
+		} else {
+			log.Printf("Could not find key %s", msg)
 		}
 	}
 }
