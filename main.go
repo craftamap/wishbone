@@ -99,7 +99,7 @@ func main() {
 
 	for msg := range getRFIDToken(&port) {
 		if time.Since(latestTimestamp) < 5*time.Second {
-			log.Println("Triggered to fast; skipped unlock")
+			log.Println("Triggered too fast; skipped unlock")
 			continue
 		}
 
