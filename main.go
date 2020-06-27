@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"strings"
@@ -17,7 +16,9 @@ func getRFIDToken(port *serial.Port, c chan string) {
 		rd := bufio.NewReader(*port)
 		res, err := rd.ReadBytes('\x03')
 		if err != nil {
-			return
+			// If there was an error while reading from the port,
+			// panic so daemon will restart
+			panic(err)
 		}
 		s := strings.Replace(string(res), "\x03", "", -1)
 		s = strings.Replace(s, "\x02", "", -1)
@@ -51,9 +52,9 @@ func main() {
 			users[fields[0]] = fields[1]
 		}
 	}
-	fmt.Printf(" :::: Found %d users \n", len(users))
-	// fmt.Printf("%v\n", users)
-	fmt.Println(" :::: Connecting to Serial")
+	log.Printf(" :::: Found %d users \n", len(users))
+	// log.Printf("%v\n", users)
+	log.Println(" :::: Connecting to Serial")
 	mode := &serial.Mode{
 		BaudRate: 9600,
 	}
@@ -61,13 +62,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(" :: Initialized!")
+	log.Println(" :: Initialized!")
 	c := make(chan string)
 	go getRFIDToken(&port, c)
 	for msg := range c {
 		username, ok := users[msg]
 		if ok {
-			log.Printf("%s: Hello %s %s", time.Now(), msg, username)
+			log.Printf("Hello %s %s", msg, username)
 			OpenPin.High()
 			time.Sleep(1 * time.Second)
 			OpenPin.Low()
