@@ -1,4 +1,4 @@
-module github.com/craftamap/gola-rfid
+module github.com/craftamap/wishbone
 
 go 1.14
 
