@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"flag"
 	"io/ioutil"
-	"log"
 	"strings"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/stianeikeland/go-rpio/v4"
 	"go.bug.st/serial"
 )
@@ -22,6 +22,13 @@ var (
 	latestTimestamp time.Time
 )
 
+func init() {
+	log.SetFormatter(&log.TextFormatter{
+		DisableColors: true,
+		FullTimestamp: true,
+	})
+}
+
 func getRFIDToken(port *serial.Port) chan string {
 	c := make(chan string)
 
@@ -34,8 +41,8 @@ func getRFIDToken(port *serial.Port) chan string {
 				// panic so daemon will restart
 				panic(err)
 			}
-			s := strings.Replace(string(res), "\x03", "", -1)
-			s = strings.Replace(s, "\x02", "", -1)
+			s := strings.ReplaceAll(string(res), "\x03", "")
+			s = strings.ReplaceAll(s, "\x02", "")
 			c <- s
 		}
 	}()
@@ -70,8 +77,8 @@ func isValid(token string) bool {
 func main() {
 	flag.Parse()
 
-	log.Println(" :: Starting sphincter rfid token...")
-	log.Println(" :::: Opening GPIO")
+	log.Info("Starting sphincter rfid token...")
+	log.Info("Opening GPIO")
 	err := rpio.Open()
 	if err != nil {
 		log.Fatal(err)
@@ -79,15 +86,15 @@ func main() {
 	OpenPin.Output()
 	ClosePin.Output()
 
-	log.Println(" :::: Reading list.txt")
+	log.Info("Reading list.txt")
 	users, err := parseUserList()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf(" :::: Found %d users \n", len(users))
+	log.Info("Found %d users \n", len(users))
 	// log.Printf("%v\n", users)
 
-	log.Println(" :::: Connecting to Serial")
+	log.Info("Connecting to Serial")
 	mode := &serial.Mode{
 		BaudRate: 9600,
 	}
@@ -95,24 +102,24 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println(" :: Initialized!")
+	log.Info("Initialized!")
 
 	for msg := range getRFIDToken(&port) {
 		if time.Since(latestTimestamp) < 5*time.Second {
-			log.Println("Triggered too fast; skipped unlock")
+			log.Warn("Triggered too fast; skipped unlock")
 			continue
 		}
 
 		username, ok := users[msg]
 		if ok {
 			latestTimestamp = time.Now()
-			log.Printf("Hello %s %s", msg, username)
+			log.Info("Hello %s %s", msg, username)
 			OpenPin.High()
 			time.Sleep(1 * time.Second)
 			OpenPin.Low()
 		} else {
 			if isValid(msg) {
-				log.Printf("Could not find key %s", msg)
+				log.Warn("Could not find key %s", msg)
 			}
 		}
 	}
