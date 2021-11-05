@@ -4,22 +4,26 @@ import (
 	"bufio"
 	"flag"
 	"io/ioutil"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
 	"github.com/stianeikeland/go-rpio/v4"
 	"go.bug.st/serial"
 )
 
 var (
-	list = flag.String("list", "list.txt", "RFID list")
-	port = flag.String("port", "/dev/ttyUSB0", "reader device")
+	list       = flag.String("list", "list.txt", "RFID list")
+	rfidDevice = flag.String("port", "/dev/ttyUSB0", "reader device")
 
 	OpenPin  rpio.Pin = rpio.Pin(22)
 	ClosePin rpio.Pin = rpio.Pin(27)
 
 	latestTimestamp time.Time
+
+	userList map[string]string
 )
 
 func init() {
@@ -51,7 +55,7 @@ func getRFIDToken(port *serial.Port) chan string {
 	return c
 }
 
-func parseUserList() (map[string]string, error) {
+func readUserList() (map[string]string, error) {
 	users := map[string]string{}
 	bytes, err := ioutil.ReadFile(*list)
 	if err != nil {
@@ -68,11 +72,76 @@ func parseUserList() (map[string]string, error) {
 	return users, nil
 }
 
+func initUserList() error {
+	users, err := readUserList()
+	if err != nil {
+		return err
+	}
+	userList = users
+
+	// Set up file listener for file so we can reload the userList when it's edited
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+
+	// We need to listen for directory events, as some editors delete the file before rewriting, and listening for
+	// changes on the file itself stops when a delete event is received
+	absPathToList, err := filepath.Abs(*list)
+	if err != nil {
+		return err
+	}
+	dirPathContainingList := filepath.Dir(absPathToList)
+	err = watcher.Add(dirPathContainingList)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			select {
+			case fsEvent, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if fsEvent.Op&fsnotify.Write != fsnotify.Write || fsEvent.Name != absPathToList {
+					continue
+				}
+				log.WithFields(log.Fields{
+					"list":             *list,
+					"filesystem event": fsEvent,
+				}).Info("received filesystem event for user list, reloading user list")
+
+				users, err := readUserList()
+				if err != nil {
+					log.WithField("err", err).Error("Failed to reload userList")
+					continue
+				}
+				userList = users
+				log.Debugf("Reloaded userList; Found %d users", len(userList))
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Error(err)
+			}
+		}
+	}()
+
+	return nil
+}
+
 // If token only contains 0 and/or F's, its not a valid token
-func isValid(token string) bool {
+func isValidToken(token string) bool {
 	token = strings.ReplaceAll(token, "F", "")
 	token = strings.ReplaceAll(token, "0", "")
 	return len(token) > 0
+}
+
+func unlockDoor() {
+	OpenPin.High()
+	time.Sleep(1 * time.Second)
+	OpenPin.Low()
 }
 
 func main() {
@@ -88,17 +157,17 @@ func main() {
 	ClosePin.Output()
 
 	log.Debug("Reading list.txt")
-	users, err := parseUserList()
+	err = initUserList()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Debug("Found %d users \n", len(users))
+	log.Debugf("Found %d users", len(userList))
 
 	log.Debug("Connecting to Serial")
 	mode := &serial.Mode{
 		BaudRate: 9600,
 	}
-	port, err := serial.Open(*port, mode)
+	port, err := serial.Open(*rfidDevice, mode)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -111,19 +180,17 @@ func main() {
 		}
 		log.WithField("readToken", readToken).Info("read token")
 
-		username, ok := users[readToken]
+		username, ok := userList[readToken]
 		if ok {
 			latestTimestamp = time.Now()
 			log.WithFields(log.Fields{
-				"token":       readToken,
 				"username": username,
+				"token":    readToken,
 			}).Info("Found valid token, unlocking door")
-			OpenPin.High()
-			time.Sleep(1 * time.Second)
-			OpenPin.Low()
+			unlockDoor()
 		} else {
-			if isValid(readToken) {
-				log.Warn("Could not find user to token", readToken)
+			if isValidToken(readToken) {
+				log.WithField("token", readToken).Warn("Could not find user to token")
 			}
 		}
 	}
