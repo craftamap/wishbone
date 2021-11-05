@@ -27,6 +27,7 @@ func init() {
 		DisableColors: true,
 		FullTimestamp: true,
 	})
+	log.SetLevel(log.DebugLevel)
 }
 
 func getRFIDToken(port *serial.Port) chan string {
@@ -78,7 +79,7 @@ func main() {
 	flag.Parse()
 
 	log.Info("Starting sphincter rfid token...")
-	log.Info("Opening GPIO")
+	log.Debug("Opening GPIO")
 	err := rpio.Open()
 	if err != nil {
 		log.Fatal(err)
@@ -86,15 +87,14 @@ func main() {
 	OpenPin.Output()
 	ClosePin.Output()
 
-	log.Info("Reading list.txt")
+	log.Debug("Reading list.txt")
 	users, err := parseUserList()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Info("Found %d users \n", len(users))
-	// log.Printf("%v\n", users)
+	log.Debug("Found %d users \n", len(users))
 
-	log.Info("Connecting to Serial")
+	log.Debug("Connecting to Serial")
 	mode := &serial.Mode{
 		BaudRate: 9600,
 	}
@@ -104,22 +104,26 @@ func main() {
 	}
 	log.Info("Initialized!")
 
-	for msg := range getRFIDToken(&port) {
+	for readToken := range getRFIDToken(&port) {
 		if time.Since(latestTimestamp) < 5*time.Second {
 			log.Warn("Triggered too fast; skipped unlock")
 			continue
 		}
+		log.WithField("readToken", readToken).Info("read token")
 
-		username, ok := users[msg]
+		username, ok := users[readToken]
 		if ok {
 			latestTimestamp = time.Now()
-			log.Info("Hello %s %s", msg, username)
+			log.WithFields(log.Fields{
+				"token":       readToken,
+				"username": username,
+			}).Info("Found valid token, unlocking door")
 			OpenPin.High()
 			time.Sleep(1 * time.Second)
 			OpenPin.Low()
 		} else {
-			if isValid(msg) {
-				log.Warn("Could not find key %s", msg)
+			if isValid(readToken) {
+				log.Warn("Could not find user to token", readToken)
 			}
 		}
 	}
